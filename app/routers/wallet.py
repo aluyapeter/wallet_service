@@ -225,15 +225,14 @@ def get_transactions(
     return transactions
 
 @router.get("/deposit/{reference}/status")
-async def get_deposit_status(
+def get_deposit_status(
     reference: str,
     user: User = Depends(require_permission("read")),
     session: Session = Depends(get_session)
 ):
     """
-    Checks the status of a specific deposit.
-    Self-Healing: If local status is PENDING, it verifies with Paystack 
-    and updates the database if the payment was actually successful.
+    Checks the status of a specific deposit reference.
+    Only allows the owner of the wallet to check.
     """
     statement = select(Transaction).where(Transaction.reference == reference)
     txn = session.exec(statement).first()
@@ -244,42 +243,9 @@ async def get_deposit_status(
     if not user.wallet or txn.wallet_id != user.wallet.id:
         raise HTTPException(status_code=403, detail="Not authorized to view this transaction")
 
-    if txn.status == TransactionStatus.PENDING:
-        try:
-            verification_data = await paystack_client.verify_transaction(reference)
-            paystack_status = verification_data.get("status")
-            amount_paid = verification_data.get("amount")
-
-            if paystack_status == "success":
-                if amount_paid != txn.amount:
-                    txn.status = TransactionStatus.FAILED
-                    txn.meta_data = {"error": "Amount mismatch during verification", "paystack_data": verification_data}
-                    session.add(txn)
-                    session.commit()
-                    return {"status": "error", "message": "Amount mismatch"}
-
-                txn.status = TransactionStatus.SUCCESS
-                user.wallet.balance += amount_paid
-                
-                session.add(txn)
-                session.add(user.wallet)
-                session.commit()
-                session.refresh(txn)
-
-            elif paystack_status in ["failed", "reversed"]:
-                txn.status = TransactionStatus.FAILED
-                session.add(txn)
-                session.commit()
-                session.refresh(txn)
-
-        except Exception as e:
-            print(f"Self-healing verification failed: {e}")
-
     return {
-        "status": "success",
         "reference": txn.reference,
-        "transaction_status": txn.status, 
+        "transaction_status": txn.status,
         "amount": txn.amount,
-        "created_at": txn.created_at,
-        "currency": user.wallet.currency
+        "created_at": txn.created_at
     }
