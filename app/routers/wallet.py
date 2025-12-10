@@ -187,7 +187,7 @@ def transfer_funds(
     
     session.commit()
     
-    return {"status": "success", "message": "Transfer successful", "reference": reference}
+    return {"message": "Transfer successful", "reference": reference}
 
 @router.get("/balance")
 def get_balance(

@@ -35,7 +35,6 @@ def payment_success(trxref: str | None = None, reference: str | None = None):
     Note: This does NOT credit the wallet. The Webhook does that.
     """
     return {
-        "status": "success",
         "message": "Payment successful! Your deposit is being processed.",
         "reference": reference
     }
