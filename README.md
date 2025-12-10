@@ -94,3 +94,4 @@ Interactive Swagger documentation is available at `/docs`.
 | GET | /wallet/balance | Check current balance | read |
 | POST | /keys/create | Generate a permanent API Key | Auth |
 | POST | /keys/rollover | Rotate a compromised key | Auth |
+| GET | /deposit/{reference}/status | Get the status of a deposit | deposit |
