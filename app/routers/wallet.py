@@ -56,8 +56,6 @@ async def initiate_deposit(
     session.refresh(new_txn)
 
     return {
-        "status": "success",
-        "message": "Transaction initialized",
         "authorization_url": paystack_data["authorization_url"],
         "reference": reference
     }
@@ -187,7 +185,7 @@ def transfer_funds(
     
     session.commit()
     
-    return {"message": "Transfer successful", "reference": reference}
+    return {"status": "success", "message": "Transfer successful", "reference": reference}
 
 @router.get("/balance")
 def get_balance(
