@@ -1,7 +1,11 @@
 from sqlmodel import create_engine, SQLModel, Session
 from app.config import settings
 
-engine = create_engine(settings.DATABASE_URL, echo=True)
+connection_string = str(settings.DATABASE_URL)
+if connection_string.startswith("postgres://"):
+    connection_string = connection_string.replace("postgres://", "postgresql://", 1)
+
+engine = create_engine(connection_string, echo=False)
 
 def create_db_and_tables():
     SQLModel.metadata.create_all(engine)
