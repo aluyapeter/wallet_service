@@ -222,15 +222,19 @@ def get_transactions(
     
     return transactions
 
+
 @router.get("/deposit/{reference}/status")
-def get_deposit_status(
+async def get_deposit_status(
     reference: str,
     user: User = Depends(require_permission("read")),
     session: Session = Depends(get_session)
 ):
     """
-    Checks the status of a specific deposit reference.
-    Only allows the owner of the wallet to check.
+    Checks the status of a specific deposit.
+    
+    Compliance Update: 
+    - If Paystack says "failed/reversed", we update DB to FAILED (allowed).
+    - If Paystack says "success", we DO NOT update DB/credit wallet (strictly compliant).
     """
     statement = select(Transaction).where(Transaction.reference == reference)
     txn = session.exec(statement).first()
@@ -241,9 +245,30 @@ def get_deposit_status(
     if not user.wallet or txn.wallet_id != user.wallet.id:
         raise HTTPException(status_code=403, detail="Not authorized to view this transaction")
 
+    if txn.status == TransactionStatus.PENDING:
+        try:
+            verification_data = await paystack_client.verify_transaction(reference)
+            gateway_status = verification_data.get("status") 
+
+            if gateway_status in ["failed", "reversed", "abandoned"]:
+                txn.status = TransactionStatus.FAILED
+                session.add(txn)
+                session.commit()
+                session.refresh(txn)
+            
+            elif gateway_status == "success":
+                 return {
+                    "reference": txn.reference,
+                    "status": "success",
+                    "amount": txn.amount,
+                    "note": "Payment confirmed. Wallet will be credited shortly via webhook."
+                }
+
+        except Exception as e:
+            print(f"Verification error: {e}")
+
     return {
         "reference": txn.reference,
-        "transaction_status": txn.status,
-        "amount": txn.amount,
-        "created_at": txn.created_at
+        "status": txn.status,
+        "amount": txn.amount
     }
