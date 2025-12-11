@@ -20,7 +20,7 @@ class PaystackService:
             "email": email,
             "amount": amount,
             "reference": reference,
-            "callback_url": "http://localhost:8000/payment-success"
+            "callback_url": f"{settings.BASE_URL}/payment-success"
         }
 
         async with httpx.AsyncClient() as client:
