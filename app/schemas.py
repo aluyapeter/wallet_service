@@ -18,3 +18,6 @@ class DepositRequest(BaseModel):
 class APIKeyRollover(BaseModel):
     expired_key_id: uuid.UUID
     expiry: str
+
+class APIKeyRevoke(BaseModel):
+    key_id: uuid.UUID

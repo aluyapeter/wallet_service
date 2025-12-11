@@ -7,7 +7,7 @@ from app.models import User, APIKey
 from app.schemas import APIKeyCreate
 from app.security import get_current_user
 from app.utils import generate_api_key, hash_api_key, calculate_expiry
-from app.schemas import APIKeyRollover, APIKeyCreate
+from app.schemas import APIKeyRollover, APIKeyCreate, APIKeyRevoke
 from typing import List
 
 router = APIRouter()
@@ -52,7 +52,6 @@ def create_api_key(
     session.refresh(new_key)
 
     return {
-        "status": "success",
         "api_key": raw_key,
         "name": new_key.name,
         "permissions": new_key.permissions,
@@ -101,7 +100,6 @@ def rollover_api_key(
     session.refresh(new_key)
 
     return {
-        "status": "success",
         "message": "Key rolled over successfully",
         "api_key": raw_key,
         "name": new_key.name,
@@ -128,3 +126,30 @@ def list_api_keys(
         }
         for key in user.api_keys
     ]
+
+@router.post("/keys/revoke")
+def revoke_api_key(
+    request: APIKeyRevoke,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user)
+):
+    """
+    Permanently deactivates a specific API Key.
+    The key will no longer work for any request.
+    """
+    statement = select(APIKey).where(APIKey.id == request.key_id)
+    key_record = session.exec(statement).first()
+
+    if not key_record or key_record.user_id != user.id:
+        raise HTTPException(status_code=404, detail="API Key not found")
+
+    if not key_record.is_active:
+        return {"status": "ignored", "message": "Key is already inactive"}
+
+    key_record.is_active = False
+    session.add(key_record)
+    session.commit()
+
+    return {
+        "message": f"API Key '{key_record.name}' has been revoked successfully."
+    }
