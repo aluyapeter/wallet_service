@@ -9,7 +9,7 @@ from sqlmodel import Session, select, desc
 
 from app.database import get_session
 from app.models import User, Wallet, Transaction, TransactionType, TransactionStatus
-from app.security import require_permission
+from app.security import require_permission, verify_pin
 from app.services.paystack import paystack_client
 from app.config import settings
 from app.schemas import DepositRequest, TransferRequest
@@ -136,6 +136,13 @@ def transfer_funds(
     """
     Internal wallet-to-wallet transfer.
     """
+    if user.pin_hash is None:
+        raise HTTPException(status_code=400, detail="Transaction PIN not set")
+    
+    pin = verify_pin(request.pin, user.pin_hash)
+    if not pin:
+        raise HTTPException(status_code=400, detail="Invalid Transaction PIN.")
+    
     if request.amount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be positive")
     

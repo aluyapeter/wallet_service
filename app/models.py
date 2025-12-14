@@ -27,6 +27,7 @@ class User(SQLModel, table=True):
         sa_relationship_kwargs={"uselist": False}
     )
     api_keys: List["APIKey"] = Relationship(back_populates="user")
+    pin_hash: str | None = Field(default=None)
 
 class Wallet(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)

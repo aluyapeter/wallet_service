@@ -5,7 +5,9 @@ from sqlmodel import Session
 from app.database import get_session
 from app.config import settings
 from app.services.user_service import get_or_create_user
-from app.security import create_access_token
+from app.security import create_access_token, get_current_user, get_pin_hash
+from app.schemas import PINCreate
+from app.models import User
 
 router = APIRouter()
 
@@ -59,4 +61,25 @@ async def auth_google(request: Request, session: Session = Depends(get_session))
             "email": user.email,
             "wallet_number": user.wallet.wallet_number if user.wallet else None
         }
+    }
+
+@router.post("/auth/set-pin")
+def set_pin(
+    pin_data: PINCreate,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session) 
+):
+    if user.pin_hash is not None:
+        raise HTTPException(status_code=400, detail="PIN already set. Use change-pin endpoint")
+    
+    hashed_pin = get_pin_hash(pin_data.pin)
+    user.pin_hash = hashed_pin
+
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+
+    return {
+        "status": "success",
+        "message": "Transaction PIN secured."
     }
