@@ -4,7 +4,7 @@ import uuid
 import json
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Header, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Header, Query
 from sqlmodel import Session, select, desc
 
 from app.database import get_session
@@ -212,7 +212,9 @@ def get_balance(
 @router.get("/transactions")
 def get_transactions(
     user: User = Depends(require_permission("read")),
-    session: Session = Depends(get_session)
+    session: Session = Depends(get_session),
+    skip: int = Query(default=0, ge=0, description="Number of records to skip"),
+    limit: int = Query(default=20, ge=1, le=100, description="Max records to return")
 ):
     """
     Returns the list of all transactions for the user's wallet.
@@ -224,6 +226,8 @@ def get_transactions(
         select(Transaction)
         .where(Transaction.wallet_id == user.wallet.id)
         .order_by(desc(Transaction.created_at))
+        .offset(skip)
+        .limit(limit)
     )
     transactions = session.exec(statement).all()
     
