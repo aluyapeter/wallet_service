@@ -60,6 +60,7 @@ async def initiate_deposit(
         "reference": reference
     }
 
+
 @router.post("/paystack/webhook")
 async def paystack_webhook(
     request: Request,
@@ -80,6 +81,7 @@ async def paystack_webhook(
         digestmod=hashlib.sha512
     ).hexdigest()
 
+
     if not hmac.compare_digest(expected_signature, x_paystack_signature):
         raise HTTPException(status_code=400, detail="Invalid signature")
 
@@ -88,19 +90,21 @@ async def paystack_webhook(
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid JSON")
 
-    if event_data.get("event") != "charge.success":
+    event_type = event_data.get("event")
+
+    if event_type != "charge.success":
         return {"status": "ignored", "message": "Event type not monitored"}
 
     data = event_data.get("data", {})
     reference = data.get("reference")
     amount_paid = data.get("amount") 
-
+    
     statement = select(Transaction).where(Transaction.reference == reference)
     transaction = session.exec(statement).first()
 
     if not transaction:
         return {"status": "error", "message": "Transaction not found"}
-    
+
     if transaction.status == TransactionStatus.SUCCESS:
         return {"status": "ignored", "message": "Transaction already processed"}
 
@@ -114,15 +118,16 @@ async def paystack_webhook(
         transaction.status = TransactionStatus.SUCCESS
         
         wallet = transaction.wallet
+        old_balance = wallet.balance
         wallet.balance += amount_paid
-        
+
         session.add(transaction)
         session.add(wallet)
         session.commit()
+        session.refresh(transaction)
         
     except Exception as e:
         session.rollback()
-        print(f"Database Commit Error: {e}")
         return {"status": "error", "message": "Internal server error"}
 
     return {"status": "success"}

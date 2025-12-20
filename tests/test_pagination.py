@@ -1,7 +1,6 @@
 import pytest
-from app.models import User, Wallet, Transaction, TransactionType, TransactionStatus
+from app.models import Transaction, TransactionType, TransactionStatus
 from app.security import create_access_token
-import uuid
 
 def test_pagination_flow(client, session, test_user):
     wallet = test_user.wallet

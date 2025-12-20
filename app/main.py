@@ -4,7 +4,14 @@ from app.database import create_db_and_tables
 from starlette.middleware.sessions import SessionMiddleware
 from app import models
 from app.config import settings
-from app.routers import auth, keys, wallet
+from app.routers import auth, keys, wallet, banks
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -17,6 +24,7 @@ app = FastAPI(lifespan=lifespan)
 app.include_router(auth.router)
 app.include_router(keys.router)
 app.include_router(wallet.router)
+app.include_router(banks.router)
 
 
 app.add_middleware(
