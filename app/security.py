@@ -3,6 +3,7 @@ from typing import Any, Union, Optional, List
 from dataclasses import dataclass, field
 from jose import jwt, JWTError
 import uuid
+from pwdlib import PasswordHash
 
 from fastapi import Depends, HTTPException, status, Security
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, APIKeyHeader
@@ -15,12 +16,13 @@ from app.utils import hash_api_key
 
 security_scheme = HTTPBearer(auto_error=False)
 api_key_header = APIKeyHeader(name="x-api-key", auto_error=False)
+password_hash = PasswordHash.recommended()
 
 @dataclass
 class UserAuthContext:
     user: User
     permissions: List[str] = field(default_factory=list)
-    is_admin: bool = False # JWT users are effectively admins of their own wallet
+    is_admin: bool = False
 
 
 def create_access_token(subject: Union[str, Any], expires_delta: Union[timedelta, None] = None) -> str:
@@ -115,3 +117,10 @@ def require_permission(permission: str):
             )
         return context.user
     return permission_checker
+
+## hash password func
+def verify_pin(plain_pin, hashed_pin):
+    return password_hash.verify(plain_pin, hashed_pin)
+
+def get_pin_hash(pin):
+    return password_hash.hash(pin)
