@@ -1,7 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
-from datetime import datetime
-
 from app.database import get_session
 from app.models import User, APIKey
 from app.schemas import APIKeyCreate
@@ -58,8 +56,6 @@ def create_api_key(
         "expires_at": new_key.expires_at
     }
 
-
-
 @router.post("/keys/rollover")
 def rollover_api_key(
     request: APIKeyRollover,
@@ -106,7 +102,6 @@ def rollover_api_key(
         "permissions": new_key.permissions,
         "expires_at": new_key.expires_at
     }
-
 
 @router.get("/keys", response_model=List[dict])
 def list_api_keys(

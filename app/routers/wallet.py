@@ -2,17 +2,18 @@ import hmac
 import hashlib
 import uuid
 import json
-from typing import List
-
-from fastapi import APIRouter, Depends, HTTPException, Request, Header, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Header, Query
 from sqlmodel import Session, select, desc
 
 from app.database import get_session
 from app.models import User, Wallet, Transaction, TransactionType, TransactionStatus
 from app.security import require_permission, verify_pin
-from app.services.paystack import paystack_client
+from app.services.paystack import paystack_client, PaystackService
 from app.config import settings
-from app.schemas import DepositRequest, TransferRequest
+from app.schemas import DepositRequest, TransferRequest, WithdrawalRequest
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/wallet", tags=["Wallet"])
 
@@ -60,6 +61,7 @@ async def initiate_deposit(
         "reference": reference
     }
 
+
 @router.post("/paystack/webhook")
 async def paystack_webhook(
     request: Request,
@@ -80,6 +82,7 @@ async def paystack_webhook(
         digestmod=hashlib.sha512
     ).hexdigest()
 
+
     if not hmac.compare_digest(expected_signature, x_paystack_signature):
         raise HTTPException(status_code=400, detail="Invalid signature")
 
@@ -88,41 +91,43 @@ async def paystack_webhook(
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid JSON")
 
-    if event_data.get("event") != "charge.success":
+    event_type = event_data.get("event")
+
+    if event_type != "charge.success":
         return {"status": "ignored", "message": "Event type not monitored"}
 
     data = event_data.get("data", {})
     reference = data.get("reference")
     amount_paid = data.get("amount") 
-
     statement = select(Transaction).where(Transaction.reference == reference)
     transaction = session.exec(statement).first()
 
     if not transaction:
         return {"status": "error", "message": "Transaction not found"}
-    
+
     if transaction.status == TransactionStatus.SUCCESS:
         return {"status": "ignored", "message": "Transaction already processed"}
 
-    if transaction.amount != amount_paid:
-         transaction.status = TransactionStatus.FAILED
-         session.add(transaction)
-         session.commit()
-         return {"status": "error", "message": "Amount mismatch"}
-
     try:
-        transaction.status = TransactionStatus.SUCCESS
-        
-        wallet = transaction.wallet
+        wallet_stmt = (
+            select(Wallet)
+            .where(Wallet.id == transaction.wallet_id)
+            .with_for_update()
+        )
+        wallet = session.exec(wallet_stmt).first()
+
+        if not wallet:
+            return {"status": "error", "message": "Wallet not found"}
+
         wallet.balance += amount_paid
-        
+        transaction.status = TransactionStatus.SUCCESS
+
         session.add(transaction)
         session.add(wallet)
         session.commit()
         
     except Exception as e:
         session.rollback()
-        print(f"Database Commit Error: {e}")
         return {"status": "error", "message": "Internal server error"}
 
     return {"status": "success"}
@@ -212,7 +217,9 @@ def get_balance(
 @router.get("/transactions")
 def get_transactions(
     user: User = Depends(require_permission("read")),
-    session: Session = Depends(get_session)
+    session: Session = Depends(get_session),
+    skip: int = Query(default=0, ge=0, description="Number of records to skip"),
+    limit: int = Query(default=20, ge=1, le=100, description="Max records to return")
 ):
     """
     Returns the list of all transactions for the user's wallet.
@@ -224,6 +231,8 @@ def get_transactions(
         select(Transaction)
         .where(Transaction.wallet_id == user.wallet.id)
         .order_by(desc(Transaction.created_at))
+        .offset(skip)
+        .limit(limit)
     )
     transactions = session.exec(statement).all()
     
@@ -279,3 +288,68 @@ async def get_deposit_status(
         "status": txn.status,
         "amount": txn.amount
     }
+
+@router.post("/withdraw")
+async def withdraw_funds(
+    request: WithdrawalRequest,
+    user: User = Depends(require_permission("transfer")),
+    session: Session = Depends(get_session)
+):
+    if not user.pin_hash:
+        raise HTTPException(400, "PIN not set")
+    if not verify_pin(request.pin, user.pin_hash):
+        raise HTTPException(401, "Invalid PIN")
+
+    wallet = user.wallet
+    if not wallet:
+        raise HTTPException(status_code=400, detail="User does not have a linked wallet")
+    if wallet.balance < request.amount:
+        raise HTTPException(400, "Insufficient funds")
+
+    original_balance = wallet.balance
+    wallet.balance -= request.amount
+    session.add(wallet)
+    session.commit()
+    session.refresh(wallet)
+
+    paystack = PaystackService()
+    
+    recipient_code = await paystack.create_transfer_recipient(
+        name=request.account_name,
+        account_number=request.account_number,
+        bank_code=request.bank_code
+    )
+    
+    if not recipient_code:
+        wallet.balance += request.amount
+        session.add(wallet)
+        session.commit()
+        raise HTTPException(500, "Failed to register bank account with provider")
+
+    reference = f"wth-{uuid.uuid4()}"
+    transfer_result = await paystack.initiate_transfer(
+        amount=request.amount,
+        recipient_code=recipient_code,
+        reference=reference,
+        reason="Wallet Withdrawal"
+    )
+
+    if not transfer_result["status"]:
+        wallet.balance += request.amount
+        session.add(wallet)
+        session.commit()
+        logger.error(f"Withdrawal failed for {user.email}: {transfer_result['message']}")
+        raise HTTPException(502, "Transfer failed at provider")
+
+    txn = Transaction(
+        amount=-request.amount,
+        transaction_type=TransactionType.WITHDRAWAL,
+        status=TransactionStatus.PENDING,
+        reference=reference,
+        wallet_id=wallet.id,
+        meta_data={"bank": request.bank_code, "account": request.account_number}
+    )
+    session.add(txn)
+    session.commit()
+
+    return {"status": "success", "message": "Withdrawal processing", "reference": reference}

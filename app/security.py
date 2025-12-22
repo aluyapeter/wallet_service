@@ -85,7 +85,7 @@ def get_auth_context(
         key_record = get_user_from_api_key(api_key_str, session)
         if key_record:
             return UserAuthContext(
-                user=key_record.user, 
+                user=key_record.user,
                 permissions=key_record.permissions, 
                 is_admin=False
             )
