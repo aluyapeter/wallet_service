@@ -25,3 +25,10 @@ class APIKeyRevoke(BaseModel):
 
 class PINCreate (BaseModel):
     pin: str = Field(min_length=4, max_length=4, pattern=r"^\d{4}$")
+
+class WithdrawalRequest(BaseModel):
+    amount: int = Field(gt=0, description="Amount in Naira")
+    account_number: str = Field(min_length=10, max_length=10)
+    bank_code: str
+    account_name: str
+    pin: str

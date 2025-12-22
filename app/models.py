@@ -9,6 +9,7 @@ from sqlalchemy import Column, JSON, BigInteger
 class TransactionType(str, Enum):
     DEPOSIT = "deposit"
     TRANSFER = "transfer"
+    WITHDRAWAL = "withdrawal"
 
 class TransactionStatus(str, Enum):
     PENDING = "pending"
@@ -27,7 +28,7 @@ class User(SQLModel, table=True):
         sa_relationship_kwargs={"uselist": False}
     )
     api_keys: List["APIKey"] = Relationship(back_populates="user")
-    pin_hash: str | None = Field(default=None)
+    pin_hash: Optional[str] = Field(default=None)
 
 class Wallet(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)

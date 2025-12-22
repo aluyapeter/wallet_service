@@ -1,6 +1,5 @@
 import httpx
 from app.config import settings
-from fastapi import HTTPException
 import logging
 
 logger = logging.getLogger(__name__)
@@ -14,7 +13,7 @@ class PaystackService:
             "Authorization": f"Bearer {self.secret_key}",
             "Content-Type": "application/json"
         }
-
+# ----------- external withdrawals------------------
     async def get_banks(self):
         """
         Fetching the list of supported banks by paystack
@@ -46,7 +45,7 @@ class PaystackService:
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(url, headers=self.headers, params=params)
-                
+
             logger.info(f"Generated Paystack URL: {response.url}")
             
             if response.status_code != 200:
@@ -57,11 +56,66 @@ class PaystackService:
         except Exception as e:
             logger.error(f"Error resolving account: {str(e)}")
             return None
+
+    async def create_transfer_recipient(self, name: str, account_number: str, bank_code: str):
+        """
+        Register the beneficiary to get a Recipient Code (RCP_...).
+        """
+        url = f"{self.base_url}/transferrecipient"
         
+        data = {
+            "type": "nuban",
+            "name": name,
+            "account_number": account_number,
+            "bank_code": bank_code,
+            "currency": "NGN"
+        }
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(url, headers=self.headers, json=data)
+            
+            if response.status_code not in [200, 201]:
+                logger.error(f"Create Recipient Failed: {response.text}")
+                return None
+            
+            return response.json()["data"]["recipient_code"]
+            
+        except Exception as e:
+            logger.error(f"Error creating recipient: {str(e)}")
+            return None
+
+    async def initiate_transfer(self, amount: int, recipient_code: str, reference: str, reason: str):
+        url = f"{self.base_url}/transfer"
+        
+        amount_kobo = amount * 100 
+        
+        data = {
+            "source": "balance", 
+            "amount": amount_kobo,
+            "recipient": recipient_code,
+            "reference": reference,
+            "reason": reason
+        }
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(url, headers=self.headers, json=data)
+            
+            if response.status_code not in [200, 201]:
+                logger.error(f"Transfer Failed: {response.text}")
+                return {"status": False, "message": response.text}
+            
+            return {"status": True, "data": response.json()["data"]}
+            
+        except Exception as e:
+            logger.error(f"Error initiating transfer: {str(e)}")
+            return {"status": False, "message": str(e)}
+        
+#-------------------- deposit-------------
     async def initialize_transaction(self, email: str, amount: int, reference: str):
         """
         Initialize a transaction with Paystack.
-        Amount must be in kobo (e.g., NGN 100.00 -> 10000).
         """
         url = f"{self.base_url}/transaction/initialize"
         payload = {
