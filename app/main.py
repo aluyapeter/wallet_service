@@ -29,7 +29,8 @@ app.include_router(banks.router)
 
 app.add_middleware(
     SessionMiddleware,
-    secret_key=settings.SECRET_KEY
+    secret_key=settings.SECRET_KEY,
+    https_only=False
 )
 
 @app.get("/")
