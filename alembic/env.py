@@ -21,10 +21,9 @@ if config.config_file_name is not None:
 target_metadata = SQLModel.metadata
 database_url = os.getenv("DATABASE_URL")
 
-# SAFETY CHECK: Since you are running locally, the host must be localhost
-# If your .env says "db" or "postgres" (container names), we swap it.
-if database_url and "@db" in database_url:
-    database_url = database_url.replace("@db", "@localhost")
+database_url = os.getenv("DATABASE_URL")
+if database_url:
+    config.set_main_option("sqlalchemy.url", database_url)
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""
