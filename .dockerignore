@@ -1,4 +1,3 @@
-alembic/versions/*
 .git
 .venv
 __pycache__
