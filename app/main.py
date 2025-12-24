@@ -2,7 +2,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app.database import create_db_and_tables
 from starlette.middleware.sessions import SessionMiddleware
-from app import models
 from app.config import settings
 from app.routers import auth, keys, wallet, banks
 import logging
@@ -41,7 +40,7 @@ def read_root():
 def payment_success(trxref: str | None = None, reference: str | None = None):
     """
     Landing page for users after they pay on Paystack.
-    Note: This does NOT credit the wallet. The Webhook does that.
+    This does NOT credit the wallet. The Webhook handles that.
     """
     return {
         "message": "Payment successful! Your deposit is being processed.",
