@@ -149,4 +149,4 @@ class PaystackService:
                 print(f"Paystack Verification Error: {e.response.text}")
                 raise ValueError("Payment verification failed")
 
-paystack_client = PaystackService()
+# paystack_client = PaystackService()

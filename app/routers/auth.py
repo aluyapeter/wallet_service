@@ -8,6 +8,7 @@ from app.services.user_service import get_or_create_user
 from app.security import create_access_token, get_current_user, get_pin_hash
 from app.schemas import PINCreate
 from app.models import User
+from app.limiter import limiter
 
 router = APIRouter()
 
@@ -64,7 +65,9 @@ async def auth_google(request: Request, session: Session = Depends(get_session))
     }
 
 @router.post("/auth/set-pin")
+@limiter.limit("5/hour")
 def set_pin(
+    request: Request,
     pin_data: PINCreate,
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session) 

@@ -8,33 +8,37 @@ from sqlmodel import Session, select, desc
 from app.database import get_session
 from app.models import User, Wallet, Transaction, TransactionType, TransactionStatus
 from app.security import require_permission, verify_pin
-from app.services.paystack import paystack_client, PaystackService
+from app.services.paystack import PaystackService
 from app.config import settings
 from app.schemas import DepositRequest, TransferRequest, WithdrawalRequest
 import logging
-
+from app.limiter import limiter
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/wallet", tags=["Wallet"])
 
 @router.post("/deposit")
+@limiter.limit("10/minute")
 async def initiate_deposit(
-    request: DepositRequest,
+    request: Request,
+    request_data: DepositRequest,
     user: User = Depends(require_permission("deposit")),
     session: Session = Depends(get_session)
 ):
     """
     Initiates a deposit via Paystack.
     """
-    if request.amount <= 0:
+    if request_data.amount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be positive")
 
     reference = str(uuid.uuid4())
 
+    paystack = PaystackService()
+
     try:
-        paystack_data = await paystack_client.initialize_transaction(
+        paystack_data = await paystack.initialize_transaction(
             email=user.email,
-            amount=request.amount,
+            amount=request_data.amount,
             reference=reference
         )
     except Exception as e:
@@ -44,7 +48,7 @@ async def initiate_deposit(
         raise HTTPException(status_code=400, detail="User does not have a wallet linked")
 
     new_txn = Transaction(
-        amount=request.amount,
+        amount=request_data.amount,
         transaction_type=TransactionType.DEPOSIT,
         status=TransactionStatus.PENDING,
         reference=reference,
@@ -58,7 +62,8 @@ async def initiate_deposit(
 
     return {
         "authorization_url": paystack_data["authorization_url"],
-        "reference": reference
+        "reference": reference,
+        # "data" : paystack_data
     }
 
 
@@ -133,8 +138,10 @@ async def paystack_webhook(
     return {"status": "success"}
 
 @router.post("/transfer")
+@limiter.limit("20/minute")
 def transfer_funds(
-    request: TransferRequest,
+    request: Request,
+    request_data: TransferRequest,
     user: User = Depends(require_permission("transfer")),
     session: Session = Depends(get_session)
 ):
@@ -144,21 +151,21 @@ def transfer_funds(
     if user.pin_hash is None:
         raise HTTPException(status_code=400, detail="Transaction PIN not set")
     
-    pin = verify_pin(request.pin, user.pin_hash)
+    pin = verify_pin(request_data.pin, user.pin_hash)
     if not pin:
         raise HTTPException(status_code=400, detail="Invalid Transaction PIN.")
     
-    if request.amount <= 0:
+    if request_data.amount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be positive")
     
     sender_wallet = user.wallet
     if not sender_wallet:
         raise HTTPException(status_code=400, detail="You do not have a wallet")
 
-    if sender_wallet.balance < request.amount:
+    if sender_wallet.balance < request_data.amount:
         raise HTTPException(status_code=400, detail="Insufficient funds")
 
-    statement = select(Wallet).where(Wallet.wallet_number == request.wallet_number)
+    statement = select(Wallet).where(Wallet.wallet_number == request_data.wallet_number)
     receiver_wallet = session.exec(statement).first()
 
     if not receiver_wallet:
@@ -169,11 +176,11 @@ def transfer_funds(
 
     reference = str(uuid.uuid4())
 
-    sender_wallet.balance -= request.amount
-    receiver_wallet.balance += request.amount
+    sender_wallet.balance -= request_data.amount
+    receiver_wallet.balance += request_data.amount
 
     sender_txn = Transaction(
-        amount=-request.amount,
+        amount=-request_data.amount,
         transaction_type=TransactionType.TRANSFER,
         status=TransactionStatus.SUCCESS,
         reference=reference,
@@ -182,7 +189,7 @@ def transfer_funds(
     )
 
     receiver_txn = Transaction(
-        amount=request.amount,
+        amount=request_data.amount,
         transaction_type=TransactionType.TRANSFER,
         status=TransactionStatus.SUCCESS,
         reference=f"{reference}-credit",
@@ -200,7 +207,9 @@ def transfer_funds(
     return {"status": "success", "message": "Transfer successful", "reference": reference}
 
 @router.get("/balance")
+@limiter.limit("100/minute")
 def get_balance(
+    request: Request,
     user: User = Depends(require_permission("read"))
 ):
     """
@@ -215,7 +224,9 @@ def get_balance(
     }
 
 @router.get("/transactions")
+@limiter.limit("50/minute")
 def get_transactions(
+    request: Request,
     user: User = Depends(require_permission("read")),
     session: Session = Depends(get_session),
     skip: int = Query(default=0, ge=0, description="Number of records to skip"),
@@ -262,8 +273,10 @@ async def get_deposit_status(
         raise HTTPException(status_code=403, detail="Not authorized to view this transaction")
 
     if txn.status == TransactionStatus.PENDING:
+        paystack = PaystackService()
+
         try:
-            verification_data = await paystack_client.verify_transaction(reference)
+            verification_data = await paystack.verify_transaction(reference)
             gateway_status = verification_data.get("status") 
 
             if gateway_status in ["failed", "reversed", "abandoned"]:

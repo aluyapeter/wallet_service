@@ -1,10 +1,14 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from slowapi import _rate_limit_exceeded_handler
+from .limiter import limiter
+from slowapi.errors import RateLimitExceeded
 from app.database import create_db_and_tables
 from starlette.middleware.sessions import SessionMiddleware
 from app.config import settings
 from app.routers import auth, keys, wallet, banks
 import logging
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -24,6 +28,9 @@ app.include_router(auth.router)
 app.include_router(keys.router)
 app.include_router(wallet.router)
 app.include_router(banks.router)
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler) #type: ignore
 
 
 app.add_middleware(

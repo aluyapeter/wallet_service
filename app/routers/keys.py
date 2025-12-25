@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlmodel import Session, select
 from app.database import get_session
 from app.models import User, APIKey
@@ -6,13 +6,16 @@ from app.schemas import APIKeyCreate
 from app.security import get_current_user
 from app.utils import generate_api_key, hash_api_key, calculate_expiry
 from app.schemas import APIKeyRollover, APIKeyCreate, APIKeyRevoke
+from app.limiter import limiter
 from typing import List
 
 router = APIRouter()
 
 @router.post("/keys/create")
+@limiter.limit("10/day")
 def create_api_key(
-    request: APIKeyCreate,
+    request: Request,
+    request_data: APIKeyCreate,
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user)
 ):
@@ -29,7 +32,7 @@ def create_api_key(
         )
     
     try:
-        expires_at = calculate_expiry(request.expiry)
+        expires_at = calculate_expiry(request_data.expiry)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -37,9 +40,9 @@ def create_api_key(
     hashed_key = hash_api_key(raw_key)
 
     new_key = APIKey(
-        name=request.name,
+        name=request_data.name,
         key_hash=hashed_key,
-        permissions=request.permissions,
+        permissions=request_data.permissions,
         expires_at=expires_at,
         user_id=user.id,
         is_active=True
