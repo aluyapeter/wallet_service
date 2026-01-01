@@ -1,5 +1,5 @@
 import pytest
-from app.models import Transaction, TransactionType, TransactionStatus
+from app.models.core import Transaction, TransactionType, TransactionStatus
 from app.security import create_access_token
 
 def test_pagination_flow(client, session, test_user):

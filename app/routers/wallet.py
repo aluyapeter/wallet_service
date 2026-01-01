@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Header, Query
 from sqlmodel import Session, select, desc
 
 from app.database import get_session
-from app.models import User, Wallet, Transaction, TransactionType, TransactionStatus
+from app.models.core import User, Wallet, Transaction, TransactionType, TransactionStatus
 from app.security import require_permission, verify_pin
 from app.services.paystack import PaystackService
 from app.config import settings

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlmodel import Session, select
 from app.database import get_session
-from app.models import User, APIKey
+from app.models.core import User, APIKey
 from app.schemas import APIKeyCreate
 from app.security import get_current_user
 from app.utils import generate_api_key, hash_api_key, calculate_expiry

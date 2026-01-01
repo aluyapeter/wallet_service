@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Alembic needs to see your tables
-from app.models import User, Wallet, Transaction, APIKey
+from app.models.core import User, Wallet, Transaction, APIKey
 
 # Alembic Config object
 config = context.config
