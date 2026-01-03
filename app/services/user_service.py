@@ -1,5 +1,5 @@
 from sqlmodel import Session, select
-from app.models import User, Wallet
+from app.models.core import User, Wallet
 import secrets
 import string
 

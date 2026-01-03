@@ -7,7 +7,7 @@ from app.config import settings
 from app.services.user_service import get_or_create_user
 from app.security import create_access_token, get_current_user, get_pin_hash
 from app.schemas import PINCreate
-from app.models import User
+from app.models.core import User
 from app.limiter import limiter
 
 router = APIRouter()

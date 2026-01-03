@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query, Depends
 from app.services.paystack import PaystackService
 from app.security import get_current_user
-from app.models import User
+from app.models.core import User
 
 router = APIRouter(tags=["Banks"])
 

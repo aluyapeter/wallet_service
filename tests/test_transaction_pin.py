@@ -1,5 +1,5 @@
 import pytest
-from app.models import User, Wallet
+from app.models.core import User, Wallet
 from app.security import create_access_token
 
 def test_pin_security_lifecycle(client, session, test_user):

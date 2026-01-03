@@ -11,7 +11,7 @@ from sqlmodel import Session, select
 
 from app.config import settings
 from app.database import get_session
-from app.models import User, APIKey
+from app.models.core import User, APIKey
 from app.utils import hash_api_key
 
 security_scheme = HTTPBearer(auto_error=False)

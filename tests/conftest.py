@@ -4,7 +4,7 @@ from sqlmodel import Session, SQLModel, create_engine
 from sqlmodel.pool import StaticPool
 from app.main import app
 from app.database import get_session
-from app.models import User, Wallet
+from app.models.core import User, Wallet
 import uuid
 
 sqlite_file_name = "database.db"
