@@ -7,12 +7,14 @@ from sqlmodel import Session, select, desc
 
 from app.database import get_session
 from app.models.core import User, Wallet, Transaction, TransactionType, TransactionStatus
+from app.models.ledger import LedgerEntry
 from app.security import require_permission, verify_pin
 from app.services.paystack import PaystackService
 from app.config import settings
 from app.schemas import DepositRequest, TransferRequest, WithdrawalRequest
 import logging
 from app.limiter import limiter
+from app.services.ledger import LedgerService
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/wallet", tags=["Wallet"])
@@ -124,11 +126,16 @@ async def paystack_webhook(
         if not wallet:
             return {"status": "error", "message": "Wallet not found"}
 
-        wallet.balance += amount_paid
-        transaction.status = TransactionStatus.SUCCESS
+        entry = LedgerEntry(
+            wallet_id=wallet.id,
+            amount = amount_paid,
+            transaction_id=transaction.id
+        )
+        session.add(entry)
 
+        transaction.status = TransactionStatus.SUCCESS
         session.add(transaction)
-        session.add(wallet)
+
         session.commit()
         
     except Exception as e:
@@ -161,8 +168,11 @@ def transfer_funds(
     sender_wallet = user.wallet
     if not sender_wallet:
         raise HTTPException(status_code=400, detail="You do not have a wallet")
+    
+    ledger_service = LedgerService()
+    current_balance = ledger_service.get_current_balance(session, sender_wallet.id)
 
-    if sender_wallet.balance < request_data.amount:
+    if current_balance < request_data.amount:
         raise HTTPException(status_code=400, detail="Insufficient funds")
 
     statement = select(Wallet).where(Wallet.wallet_number == request_data.wallet_number)
@@ -197,11 +207,24 @@ def transfer_funds(
         meta_data={"direction": "received", "sender": sender_wallet.wallet_number}
     )
 
-    session.add(sender_wallet)
-    session.add(receiver_wallet)
     session.add(sender_txn)
     session.add(receiver_txn)
+    session.flush()
     
+    sender_entry = LedgerEntry(
+        wallet_id = sender_wallet.id,
+        amount = -request_data.amount,
+        transaction_id = sender_txn.id
+    )
+
+    receiver_entry = LedgerEntry(
+        wallet_id = receiver_wallet.id,
+        amount = request_data.amount,
+        transaction_id = receiver_txn.id
+    )
+
+    session.add(sender_entry)
+    session.add(receiver_entry)
     session.commit()
     
     return {"status": "success", "message": "Transfer successful", "reference": reference}
@@ -210,16 +233,27 @@ def transfer_funds(
 @limiter.limit("100/minute")
 def get_balance(
     request: Request,
-    user: User = Depends(require_permission("read"))
+    user: User = Depends(require_permission("read")),
+    session: Session = Depends(get_session)
 ):
     """
     Returns the current wallet balance.
     """
     if not user.wallet:
-        raise HTTPException(status_code=404, detail="No wallet found")
+        raise HTTPException(
+            status_code=404,
+            detail="No wallet found for this user"
+        )
     
+    ledger_service = LedgerService()
+
+    balance = ledger_service.get_current_balance(
+        session=session,
+        wallet_id=user.wallet.id
+    )
+
     return {
-        "balance": user.wallet.balance,
+        "balance": balance,
         "currency": user.wallet.currency
     }
 
