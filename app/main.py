@@ -7,6 +7,7 @@ from app.database import create_db_and_tables
 from starlette.middleware.sessions import SessionMiddleware
 from app.config import settings
 from app.routers import auth, keys, wallet, banks
+from app.middleware import IdempotencyMiddleware
 import logging
 
 
@@ -38,6 +39,7 @@ app.add_middleware(
     secret_key=settings.SECRET_KEY,
     https_only=False
 )
+app.add_middleware(IdempotencyMiddleware)
 
 @app.get("/")
 def read_root():

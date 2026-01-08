@@ -150,7 +150,8 @@ def transfer_funds(
     request: Request,
     request_data: TransferRequest,
     user: User = Depends(require_permission("transfer")),
-    session: Session = Depends(get_session)
+    session: Session = Depends(get_session),
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key")
 ):
     """
     Internal wallet-to-wallet transfer.
