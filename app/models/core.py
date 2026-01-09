@@ -22,6 +22,8 @@ class User(SQLModel, table=True):
     full_name: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    password_hash: str | None = Field(default=None, nullable=True)
+    is_email_verified: bool = Field(default=False)
 
     wallet: Optional["Wallet"] = Relationship(
         back_populates="user",

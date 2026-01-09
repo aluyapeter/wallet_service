@@ -30,6 +30,18 @@ services:
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/wallet_db
       - REDIS_URL=redis://redis:6379/0
+  worker:
+    build: .
+    command: celery -A app.core.celery.c_app worker --loglevel=info
+    volumes:
+      - ./:/app
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - redis
+    environment:
+      - REDIS_URL=redis://redis:6379/0
 
 volumes:
   postgres_data:
