@@ -133,6 +133,9 @@ async def paystack_webhook(
         )
         session.add(entry)
 
+        wallet.balance += amount_paid
+        session.add(wallet)
+
         transaction.status = TransactionStatus.SUCCESS
         session.add(transaction)
 
@@ -140,6 +143,7 @@ async def paystack_webhook(
         
     except Exception as e:
         session.rollback()
+        logger.error(f"Webhook error for reference {reference}: {str(e)}")
         return {"status": "error", "message": "Internal server error"}
 
     return {"status": "success"}
