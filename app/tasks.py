@@ -9,7 +9,7 @@ import socket
 def send_email_task(email_to: str, subject: str, html_content: str):
     try:
         smtp_server_host = os.getenv("SMTP_SERVER", "smtp.gmail.com")
-        smtp_port = int(os.getenv("SMTP_PORT", 587))
+        smtp_port = int(os.getenv("SMTP_PORT", 465))
         smtp_user = os.getenv("SMTP_USERNAME")
         smtp_password = os.getenv("SMTP_PASSWORD")
         sender_email = os.getenv("EMAILS_FROM_EMAIL", smtp_user)
@@ -17,7 +17,7 @@ def send_email_task(email_to: str, subject: str, html_content: str):
 
         print(f"DEBUG: Resolving IPv4 for {smtp_server_host}...")
         smtp_server_ip = socket.gethostbyname(smtp_server_host)
-        print(f"DEBUG: Connecting to {smtp_server_ip} (IPv4) on port {smtp_port}")
+        print(f"DEBUG: Connecting to {smtp_server_ip} (IPv4) on port {smtp_port} via SSL")
 
         message = MIMEMultipart()
         message["From"] = f"{sender_name} <{sender_email}>"
@@ -25,9 +25,8 @@ def send_email_task(email_to: str, subject: str, html_content: str):
         message["Subject"] = subject
         message.attach(MIMEText(html_content, "html"))
 
-        with smtplib.SMTP(smtp_server_ip, smtp_port, timeout=30) as server:
+        with smtplib.SMTP_SSL(smtp_server_ip, smtp_port, timeout=30) as server:
             server.set_debuglevel(1)
-            server.starttls()
             server.login(smtp_user, smtp_password)
             server.send_message(message)
             
