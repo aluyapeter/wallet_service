@@ -13,6 +13,8 @@ from app.config import settings
 from app.database import get_session
 from app.models.core import User, APIKey
 from app.utils import hash_api_key
+import random
+import string
 
 security_scheme = HTTPBearer(auto_error=False)
 api_key_header = APIKeyHeader(name="x-api-key", auto_error=False)
@@ -24,6 +26,11 @@ class UserAuthContext:
     permissions: List[str] = field(default_factory=list)
     is_admin: bool = False
 
+def generate_otp(length: int = 6) -> str:
+    """
+    Generate a random numeric string
+    """
+    return ''.join(random.choices(string.digits, k=length))
 
 def create_access_token(subject: Union[str, Any], expires_delta: Union[timedelta, None] = None) -> str:
     if expires_delta:
