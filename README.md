@@ -156,6 +156,17 @@ docker-compose exec web pytest
 - `tests/test_pagination.py`: Verifies data scaling
 - `tests/test_wallet.py`: Verifies basic transfers
 
+## ⚠️ Demo & Testing Note
+
+This project is hosted on a **Free Tier** infrastructure which blocks outgoing SMTP email ports.
+
+**To verify a new account:**
+
+1. Sign up with any email address.
+2. If you do not receive the OTP (due to platform restrictions), use the **Master OTP**:
+   > **Code:** `000000`
+3. This will instantly verify your account and allow you to test the full wallet functionality.
+
 ## 📦 Deployment (Manual/EC2)
 
 1. Clone repository to server
