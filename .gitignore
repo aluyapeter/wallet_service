@@ -7,3 +7,4 @@ __pycache__/
 database.db
 *.pem
 play_redis.py
+fix_wallets.py

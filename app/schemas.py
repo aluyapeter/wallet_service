@@ -1,6 +1,34 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, EmailStr, model_validator
 from typing import List
 import uuid
+from sqlmodel import SQLModel
+
+class UserSignup(SQLModel):
+    full_name: str
+    email: EmailStr
+    password: str
+    confirm_password: str
+
+    @model_validator(mode='after')
+    def check_passwords_match(self):
+        pw = self.password
+        cpw = self.confirm_password
+        
+        if pw is not None and cpw is not None and pw != cpw:
+            raise ValueError('Passwords do not match')
+        
+        return self
+    
+class EmailVerification(SQLModel):
+    email: EmailStr
+    otp: str
+
+class LoginRequest(SQLModel):
+    email: EmailStr
+    password: str
+
+class ResendOTPRequest(BaseModel):
+    email: EmailStr
 
 class APIKeyCreate(BaseModel):
     name: str
