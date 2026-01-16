@@ -3,10 +3,9 @@ from app.services.paystack import PaystackService
 from app.security import get_current_user
 from app.models.core import User
 
-router = APIRouter(tags=["Banks"])
+router = APIRouter(prefix="/banks", tags=["Banks"])
 
-
-@router.get("/banks")
+@router.get("/")
 async def list_banks():
     """
     Helpe endpoint to list banks and their codes
@@ -20,7 +19,7 @@ async def list_banks():
     ]
     return list
 
-@router.get("/banks/resolve")
+@router.get("/resolve")
 async def resolve_account_details(
     account_number: str = Query(..., min_length=10, max_length=10, description="NUBAN Account Number"),
     bank_code: str = Query(..., description="Bank code gotten from the bank list endpoint"),

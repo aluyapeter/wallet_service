@@ -60,3 +60,27 @@ class WithdrawalRequest(BaseModel):
     bank_code: str
     account_name: str
     pin: str
+
+class ForgotPinRequest(SQLModel):
+    email: EmailStr
+
+class ResetPinRequest(SQLModel):
+    email: EmailStr
+    new_pin: str = Field(min_length=4, max_length=4, pattern=r"^\d{4}$")
+    otp: str
+
+class PasswordReset(SQLModel):
+    email: EmailStr
+    otp: str
+    password: str
+    confirm_password: str
+
+    @model_validator(mode='after')
+    def check_passwords_match(self):
+        pw = self.password
+        cpw = self.confirm_password
+        
+        if pw is not None and cpw is not None and pw != cpw:
+            raise ValueError('Passwords do not match')
+        
+        return self

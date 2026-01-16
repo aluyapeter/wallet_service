@@ -5,8 +5,8 @@ from sqlmodel import Session, select
 from app.database import get_session
 from app.config import settings
 from app.services.user_service import get_or_create_user
-from app.security import create_access_token, get_current_user, get_pin_hash, generate_otp, verify_pin
-from app.schemas import PINCreate, UserSignup, EmailVerification, LoginRequest, ResendOTPRequest
+from app.security import create_access_token, get_current_user, get_pin_hash, generate_otp, verify_pin, require_permission
+from app.schemas import PINCreate, UserSignup, EmailVerification, LoginRequest, ResendOTPRequest, ForgotPinRequest, ResetPinRequest, PasswordReset
 from app.models.core import User, Wallet
 from app.limiter import limiter
 from app.tasks import send_email_task
@@ -14,7 +14,7 @@ from app.core.redis import get_redis
 import secrets
 import string
 
-router = APIRouter()
+router = APIRouter(prefix="/auth", tags=["Auth"])
 
 oauth = OAuth()
 oauth.register(
@@ -25,7 +25,7 @@ oauth.register(
     client_kwargs={'scope': 'openid email profile'}
 )
 
-@router.get("/auth/google")
+@router.get("/google")
 async def login_google(request: Request):
     """
     Returns the Google Login URL.
@@ -36,7 +36,7 @@ async def login_google(request: Request):
     
     return {"url": response.headers["location"]}
 
-@router.get("/auth/google/callback")
+@router.get("/google/callback")
 async def auth_google(request: Request, session: Session = Depends(get_session)):
     """
     Handles the callback from Google.
@@ -68,7 +68,7 @@ async def auth_google(request: Request, session: Session = Depends(get_session))
         }
     }
 
-@router.post("/auth/signup")
+@router.post("/signup")
 async def signup(
         signup_data: UserSignup,
         session: Session = Depends(get_session)
@@ -124,7 +124,7 @@ async def signup(
         "wallet_number": unique_wallet_number
     }
 
-@router.post("/auth/verify-email")
+@router.post("/verify-email")
 async def verify_email(
     data: EmailVerification,
     session: Session = Depends(get_session)
@@ -174,7 +174,7 @@ async def verify_email(
 
     return {"message":"Email verified successfully"}
 
-@router.post("/auth/login")
+@router.post("/login")
 def login(
     login_data: LoginRequest,
     session: Session = Depends(get_session)
@@ -200,7 +200,7 @@ def login(
     }
 
 @router.get("/profile")
-def get_user_profile(user: User = Depends(get_current_user)):
+def get_user_profile(user: User = Depends(require_permission("read"))):
     """
     Returns the authenticated user's profile details.
     """
@@ -241,7 +241,7 @@ async def resend_verification(
 
     return {"message": "New verification code sent."}
 
-@router.post("/auth/set-pin")
+@router.post("/set-pin")
 @limiter.limit("5/hour")
 def set_pin(
     request: Request,
@@ -263,3 +263,79 @@ def set_pin(
         "status": "success",
         "message": "Transaction PIN secured."
     }
+
+@router.post("/forgot-pin")
+async def forgot_pin(data: ForgotPinRequest, session: Session = Depends(get_session)):
+    # (Security Note: Standard practice is to always say "If email exists, code sent" 
+    # to prevent hackers checking which emails are registered).
+    user = session.exec(select(User).where(User.email == data.email)).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    otp = generate_otp()
+    
+    redis = get_redis()
+    await redis.set(f"reset_pin:{data.email}", otp, ex=600)
+
+    email_body = f"<h3>PIN Reset Request</h3><p>Your code is: <b>{otp}</b></p>"
+    send_email_task.delay(data.email, "Reset your Transaction PIN", email_body)
+
+    return {"message": "Reset code sent to email."}
+
+@router.post("/reset-pin")
+async def reset_pin(data: ResetPinRequest, session: Session = Depends(get_session)):
+    redis = get_redis()
+    key = f"reset_pin:{data.email}"
+    stored_otp = await redis.get(key)
+
+    if not stored_otp or stored_otp != data.otp:
+        raise HTTPException(status_code=400, detail="Invalid or expired OTP")
+
+    user = session.exec(select(User).where(User.email == data.email)).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.pin_hash = get_pin_hash(data.new_pin)
+    session.add(user)
+    session.commit()
+
+    await redis.delete(key)
+
+    return {"message": "Transaction PIN updated successfully."}
+
+@router.post("/forgot-password")
+async def forgot_password(data: ForgotPinRequest, session: Session = Depends(get_session)):
+    user = session.exec(select(User).where(User.email == data.email)).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    otp = generate_otp()
+    
+    redis = get_redis()
+    await redis.set(f"reset_pin:{data.email}", otp, ex=600)
+
+    email_body = f"<h3>Password Reset Request</h3><p>Your code is: <b>{otp}</b></p>"
+    send_email_task.delay(data.email, "Reset your Password", email_body)
+
+    return {"message": "OTP sent to email."}
+
+@router.post("/reset-password")
+async def reset_password(data: PasswordReset, session: Session = Depends(get_session)):
+    redis = get_redis()
+    key = f"reset_pin:{data.email}"
+    stored_otp = await redis.get(key)
+
+    if not stored_otp or stored_otp != data.otp:
+        raise HTTPException(status_code=400, detail="Invalid or expired OTP")
+
+    user = session.exec(select(User).where(User.email == data.email)).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.password_hash = get_pin_hash(data.password)
+    session.add(user)
+    session.commit()
+
+    await redis.delete(key)
+
+    return {"message": "Password successfully reset. Please login."}

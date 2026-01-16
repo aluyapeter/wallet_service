@@ -9,9 +9,9 @@ from app.schemas import APIKeyRollover, APIKeyCreate, APIKeyRevoke
 from app.limiter import limiter
 from typing import List
 
-router = APIRouter()
+router = APIRouter(prefix="/keys", tags=["Keys"])
 
-@router.post("/keys/create")
+@router.post("/create")
 @limiter.limit("10/day")
 def create_api_key(
     request: Request,
@@ -59,7 +59,7 @@ def create_api_key(
         "expires_at": new_key.expires_at
     }
 
-@router.post("/keys/rollover")
+@router.post("/rollover")
 def rollover_api_key(
     request: APIKeyRollover,
     session: Session = Depends(get_session),
@@ -106,7 +106,7 @@ def rollover_api_key(
         "expires_at": new_key.expires_at
     }
 
-@router.get("/keys", response_model=List[dict])
+@router.get("/", response_model=List[dict])
 def list_api_keys(
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user)
@@ -125,7 +125,7 @@ def list_api_keys(
         for key in user.api_keys
     ]
 
-@router.post("/keys/revoke")
+@router.post("/revoke")
 def revoke_api_key(
     request: APIKeyRevoke,
     session: Session = Depends(get_session),
