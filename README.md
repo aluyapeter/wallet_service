@@ -50,30 +50,17 @@ The application is fully containerized. You do not need to install Python or Pos
 - Docker Desktop & Docker Compose
 - Paystack Account (Test Mode)
 
-### 2. Environment Setup
+## 🛠 Environment Setup
 
-Create a `.env` file in the root directory:
+## 1. Copy the example environment file:
 
-````ini
-# Database (Localhost allows access from outside container)
-DATABASE_URL=postgresql://postgres:postgres@localhost:5433/wallet_db
-DB_USER=postgres
-DB_PASSWORD=postgres
-DB_NAME=wallet_db
+```bash
+cp .env.example .env
+```
 
-# Security
-SECRET_KEY=your_super_secret_jwt_key
-ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
+Open .env and fill in your specific credentials (DB, Google, Paystack).
 
-# OAuth (Google)
-GOOGLE_CLIENT_ID=your_google_client_id
-GOOGLE_CLIENT_SECRET=your_google_client_secret
-GOOGLE_REDIRECT_URI=http://localhost:8000/auth/google/callback
-
-# Payments (Paystack)
-PAYSTACK_SECRET_KEY=sk_test_xxxxxxxxxxxxxxxx
-
+Note: For email testing, use your Gmail App Password.
 
 ## 3. Launch the Stack
 
@@ -81,7 +68,7 @@ Run the entire application (Database + API) with one command:
 
 ```bash
 docker-compose up --build
-````
+```
 
 - **API:** http://localhost:8000
 - **Swagger UI:** http://localhost:8000/docs
@@ -117,28 +104,54 @@ Copy the HTTPS URL generated (e.g., `https://random-id.localhost.run`).
 
 ### 🔐 Auth & Security
 
-| Method | Endpoint        | Description                              |
-| ------ | --------------- | ---------------------------------------- |
-| POST   | `/auth/set-pin` | Set a 4-digit security PIN for transfers |
-| GET    | `/auth/google`  | Login via Google                         |
+| Method | Endpoint                    | Description                                                                                         |
+| ------ | --------------------------- | --------------------------------------------------------------------------------------------------- |
+| GET    | `/auth/google`              | Login via Google, paste the returned url in another tab to get your access token                    |
+| GET    | `/auth/google/callback`     | Handles the callback from Google. Exchanges the code for a token, gets user info, and logs them in. |
+| POST   | `/auth/signup`              | Registers a new user, creates their unique wallet, and triggers email verification. Google          |
+| POST   | `/auth/verify-email`        | Verifies a user's email address using a One-Time Password (OTP).                                    |
+| POST   | `/auth/login`               | Authenticates a user and issues a JWT access token.                                                 |
+| GET    | `/auth/profile`             | Returns the authenticated user's profile details.                                                   |
+| POST   | `/auth/resend-verification` | Generates a new OTP and sends it if the user is not yet verified.                                   |
+| POST   | `/auth/set-pin`             | Sets the initial transaction PIN for the user.                                                      |
+| POST   | `/auth/forgot-pin`          | Initiates the transaction PIN reset process by sending an OTP.                                      |
+| POST   | `/auth/reset-pin`           | Resets the user's transaction PIN after validating the OTP.                                         |
+| POST   | `/auth/forgot-password`     | Initiates the password recovery process by issuing a verification code.                             |
+| POST   | `/auth/resset password`     | Resets the user's login password after verifying the One-Time Password (OTP).                       |
 
-### 🏦 Banking Operations
+## ⚠️ Demo & Testing Note
 
-| Method | Endpoint           | Description                               |
-| ------ | ------------------ | ----------------------------------------- |
-| GET    | `/banks`           | List all supported Nigerian banks & codes |
-| GET    | `/banks/resolve`   | Verify an account number (KYC check)      |
-| POST   | `/wallet/withdraw` | Send money to an external bank account    |
-| POST   | `/wallet/deposit`  | Initialize a deposit via Paystack         |
-| POST   | `/wallet/transfer` | Send money to another user (Requires PIN) |
+This project is hosted on a **Free Tier** infrastructure which blocks outgoing SMTP email ports.
 
-### 📊 Data & Keys
+**To verify a new account:**
 
-| Method | Endpoint               | Description                                        |
-| ------ | ---------------------- | -------------------------------------------------- |
-| GET    | `/wallet/transactions` | Paginated transaction history (`?limit=20&skip=0`) |
-| GET    | `/wallet/balance`      | Check current wallet balance                       |
-| POST   | `/keys/create`         | Generate a developer API Key                       |
+1. Sign up with any email address.
+2. If you do not receive the OTP (due to platform restrictions), use the **Master OTP**:
+   > **Code:** `000000`
+3. This will instantly verify your account and allow you to test the full wallet functionality.
+4. This also applies to the `reset-pin` and `reset-password` endpoints where OTP is required.
+
+### 💳 Wallets & Bank
+
+| Method | Endpoint                              | Description                                                                               |
+| ------ | ------------------------------------- | ----------------------------------------------------------------------------------------- |
+| POST   | `/wallet/deposit`                     | Initiates a deposit via Paystack.                                                         |
+| POST   | `/wallet/paystack/webhook`            | Handles updates from Paystack. Verified via HMAC signature.                               |
+| POST   | `/wallet/transfer`                    | Internal wallet-to-wallet transfer.                                                       |
+| GET    | `/wallet/balance`                     | Returns the current wallet balance.                                                       |
+| GET    | `/wallet/transactions`                | Returns a paginated lists of all transactions for the user's wallet. (`?limit=20&skip=0`) |
+| POST   | `/wallets/deposit/{reference}/status` | Checks the status of a specific deposit.                                                  |
+| POST   | `/wallet/withdraw`                    | Initiates a withdrawal from the user's wallet to an external bank account.                |
+| GET    | `/banks/`                             | Helper endpoint to list banks and their codes                                             |
+| GET    | `/banks/resolve`                      | Verifies an account number and returns the account name                                   |
+
+### 🔐 Data & Keys
+
+| Method | Endpoint         | Description                                                                              |
+| ------ | ---------------- | ---------------------------------------------------------------------------------------- |
+| POST   | `/keys/create`   | Generates a new API Key for the authenticated user. Enforces a maximum of 5 active keys. |
+| POST   | `/keys/rollover` | Replaces an old/expired key with a new one inheriting the same permissions.              |
+| POST   | `/keys/revoke`   | Permanently deactivates a specific API Key. The key will no longer work for any request. |
 
 ## 🧪 Testing
 
@@ -155,17 +168,6 @@ docker-compose exec web pytest
 - `tests/test_transaction_pin.py`: Verifies PIN security lifecycle
 - `tests/test_pagination.py`: Verifies data scaling
 - `tests/test_wallet.py`: Verifies basic transfers
-
-## ⚠️ Demo & Testing Note
-
-This project is hosted on a **Free Tier** infrastructure which blocks outgoing SMTP email ports.
-
-**To verify a new account:**
-
-1. Sign up with any email address.
-2. If you do not receive the OTP (due to platform restrictions), use the **Master OTP**:
-   > **Code:** `000000`
-3. This will instantly verify your account and allow you to test the full wallet functionality.
 
 ## 📦 Deployment (Manual/EC2)
 

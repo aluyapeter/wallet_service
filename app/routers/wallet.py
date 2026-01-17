@@ -297,10 +297,6 @@ async def get_deposit_status(
 ):
     """
     Checks the status of a specific deposit.
-    
-    Compliance Update: 
-    - If Paystack says "failed/reversed", we update DB to FAILED (allowed).
-    - If Paystack says "success", we DO NOT update DB/credit wallet (strictly compliant).
     """
     statement = select(Transaction).where(Transaction.reference == reference)
     txn = session.exec(statement).first()
@@ -347,6 +343,9 @@ async def withdraw_funds(
     user: User = Depends(require_permission("transfer")),
     session: Session = Depends(get_session)
 ):
+    """
+    Initiates a withdrawal from the user's wallet to an external bank account.
+    """
     if not user.pin_hash:
         raise HTTPException(400, "PIN not set")
     if not verify_pin(request.pin, user.pin_hash):

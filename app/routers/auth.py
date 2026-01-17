@@ -73,6 +73,9 @@ async def signup(
         signup_data: UserSignup,
         session: Session = Depends(get_session)
 ):
+    """
+    Registers a new user, creates their unique wallet, and triggers email verification.
+    """
     statement = select(User).where(User.email == signup_data.email)
     existing_user = session.exec(statement).first()
     if existing_user:
@@ -129,6 +132,13 @@ async def verify_email(
     data: EmailVerification,
     session: Session = Depends(get_session)
 ):
+    """
+    Verifies a user's email address using a One-Time Password (OTP).
+
+    This endpoint supports two verification methods:
+    1. **Standard Verification:** Validates the provided OTP against the code stored in Redis (with expiry).
+    2. **Demo Mode:** Accepts the master code '000000' to instantly verify accounts in environments where email delivery is restricted (e.g., Free Tier hosting).
+    """
     if data.otp == "000000":
         statement = select(User).where(User.email == data.email)
         user = session.exec(statement).first()
@@ -179,6 +189,9 @@ def login(
     login_data: LoginRequest,
     session: Session = Depends(get_session)
 ):
+    """
+    Authenticates a user and issues a JWT access token.
+    """
     statement = select(User).where(User.email == login_data.email)
     user = session.exec(statement).first()
 
@@ -249,6 +262,9 @@ def set_pin(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session) 
 ):
+    """
+    Sets the initial transaction PIN for the user.
+    """
     if user.pin_hash is not None:
         raise HTTPException(status_code=400, detail="PIN already set. Use change-pin endpoint")
     
@@ -266,6 +282,9 @@ def set_pin(
 
 @router.post("/forgot-pin")
 async def forgot_pin(data: ForgotPinRequest, session: Session = Depends(get_session)):
+    """
+    Initiates the transaction PIN reset process by sending an OTP.
+    """
     # (Security Note: Standard practice is to always say "If email exists, code sent" to prevent hackers checking which emails are registered). so i'll probably work on that if it becomes more serious
     user = session.exec(select(User).where(User.email == data.email)).first()
     if not user:
@@ -283,6 +302,9 @@ async def forgot_pin(data: ForgotPinRequest, session: Session = Depends(get_sess
 
 @router.post("/reset-pin")
 async def reset_pin(data: ResetPinRequest, session: Session = Depends(get_session)):
+    """
+    Resets the user's transaction PIN after validating the OTP.
+    """
     if data.otp == "000000":
         statement = select(User).where(User.email == data.email)
         user = session.exec(statement).first()
@@ -322,6 +344,9 @@ async def reset_pin(data: ResetPinRequest, session: Session = Depends(get_sessio
 
 @router.post("/forgot-password")
 async def forgot_password(data: ForgotPinRequest, session: Session = Depends(get_session)):
+    """
+    Initiates the password recovery process by issuing a verification code.
+    """
     user = session.exec(select(User).where(User.email == data.email)).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -329,7 +354,7 @@ async def forgot_password(data: ForgotPinRequest, session: Session = Depends(get
     otp = generate_otp()
     
     redis = get_redis()
-    await redis.set(f"reset_pin:{data.email}", otp, ex=600)
+    await redis.set(f"reset_password:{data.email}", otp, ex=600)
 
     email_body = f"<h3>Password Reset Request</h3><p>Your code is: <b>{otp}</b></p>"
     send_email_task.delay(data.email, "Reset your Password", email_body)
@@ -338,6 +363,9 @@ async def forgot_password(data: ForgotPinRequest, session: Session = Depends(get
 
 @router.post("/reset-password")
 async def reset_password(data: PasswordReset, session: Session = Depends(get_session)):
+    """
+    Resets the user's login password after verifying the One-Time Password (OTP).
+    """
     if data.otp == "000000":
         statement = select(User).where(User.email == data.email)
         user = session.exec(statement).first()
@@ -354,7 +382,7 @@ async def reset_password(data: PasswordReset, session: Session = Depends(get_ses
 
         await redis.delete(f"reset_pin:{data.email}")
 
-        return {"message": "Transaction PIN updated successfully.{Demo mode}"}
+        return {"message": "Password successfully reset. {Demo mode}"}
     redis = get_redis()
     key = f"reset_pin:{data.email}"
     stored_otp = await redis.get(key)

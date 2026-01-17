@@ -8,10 +8,10 @@ router = APIRouter(prefix="/banks", tags=["Banks"])
 @router.get("/")
 async def list_banks():
     """
-    Helpe endpoint to list banks and their codes
+    Helper endpoint to list banks and their codes
     """
-    # service = PaystackService()
-    banks = await PaystackService().get_banks()
+    service = PaystackService()
+    banks = await service.get_banks()
 
     list = [
         {"name": bank["name"], "code": bank["code"]}
