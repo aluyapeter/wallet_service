@@ -11,6 +11,7 @@ from app.models.core import User, Wallet
 from app.limiter import limiter
 from app.tasks import send_email_task
 from app.core.redis import get_redis
+from redis.asyncio import Redis
 import secrets
 import string
 
@@ -71,7 +72,8 @@ async def auth_google(request: Request, session: Session = Depends(get_session))
 @router.post("/signup")
 async def signup(
         signup_data: UserSignup,
-        session: Session = Depends(get_session)
+        session: Session = Depends(get_session),
+        redis: Redis = Depends(get_redis)
 ):
     """
     Registers a new user, creates their unique wallet, and triggers email verification.
@@ -115,7 +117,6 @@ async def signup(
 
     otp_code = generate_otp()
 
-    redis = get_redis()
     await redis.set(f"verification:{new_user.email}", otp_code, ex=600)
 
     email_body = f"<h3>Your verification code</h3><p>Your code is: <b>{otp_code}</b></p>"
@@ -130,7 +131,8 @@ async def signup(
 @router.post("/verify-email")
 async def verify_email(
     data: EmailVerification,
-    session: Session = Depends(get_session)
+    session: Session = Depends(get_session),
+    redis: Redis = Depends(get_redis)
 ):
     """
     Verifies a user's email address using a One-Time Password (OTP).
@@ -154,12 +156,10 @@ async def verify_email(
         session.commit()
         session.refresh(user)
         
-        redis = get_redis()
         await redis.delete(f"verification:{data.email}")
         
         return {"message": "Email verified successfully (Demo Mode)"}
 
-    redis = get_redis()
     stored_code = await redis.get(f"verification:{data.email}")
 
     if not stored_code:
@@ -230,7 +230,8 @@ def get_user_profile(user: User = Depends(require_permission("read"))):
 @router.post("/resend-verification")
 async def resend_verification(
     data: ResendOTPRequest,
-    session: Session = Depends(get_session)
+    session: Session = Depends(get_session),
+    redis: Redis = Depends(get_redis)
 ):
     """
     Generates a new OTP and sends it if the user is not yet verified.
@@ -246,7 +247,6 @@ async def resend_verification(
 
     otp_code = generate_otp()
 
-    redis = get_redis()
     await redis.set(f"verification:{user.email}", otp_code, ex=600)
 
     email_body = f"<h3>Your verification code</h3><p>Your code is: <b>{otp_code}</b></p>"
@@ -281,7 +281,11 @@ def set_pin(
     }
 
 @router.post("/forgot-pin")
-async def forgot_pin(data: ForgotPinRequest, session: Session = Depends(get_session)):
+async def forgot_pin(
+    data: ForgotPinRequest,
+    session: Session = Depends(get_session),
+    redis: Redis = Depends(get_redis)
+):
     """
     Initiates the transaction PIN reset process by sending an OTP.
     """
@@ -291,8 +295,7 @@ async def forgot_pin(data: ForgotPinRequest, session: Session = Depends(get_sess
         raise HTTPException(status_code=404, detail="User not found")
 
     otp = generate_otp()
-    
-    redis = get_redis()
+
     await redis.set(f"reset_pin:{data.email}", otp, ex=600)
 
     email_body = f"<h3>PIN Reset Request</h3><p>Your code is: <b>{otp}</b></p>"
@@ -301,7 +304,11 @@ async def forgot_pin(data: ForgotPinRequest, session: Session = Depends(get_sess
     return {"message": "Reset code sent to email."}
 
 @router.post("/reset-pin")
-async def reset_pin(data: ResetPinRequest, session: Session = Depends(get_session)):
+async def reset_pin(
+    data: ResetPinRequest,
+    session: Session = Depends(get_session),
+    redis: Redis = Depends(get_redis)
+):
     """
     Resets the user's transaction PIN after validating the OTP.
     """
@@ -311,8 +318,6 @@ async def reset_pin(data: ResetPinRequest, session: Session = Depends(get_sessio
         
         if not user:
             raise HTTPException(status_code=400, detail="User not found")
-        
-        redis = get_redis()
     
         user.pin_hash = get_pin_hash(data.new_pin)
         session.add(user)
@@ -323,7 +328,6 @@ async def reset_pin(data: ResetPinRequest, session: Session = Depends(get_sessio
 
         return {"message": "Transaction PIN updated successfully.{Demo mode}"}
     
-    redis = get_redis()
     key = f"reset_pin:{data.email}"
     stored_otp = await redis.get(key)
 
@@ -343,7 +347,11 @@ async def reset_pin(data: ResetPinRequest, session: Session = Depends(get_sessio
     return {"message": "Transaction PIN updated successfully."}
 
 @router.post("/forgot-password")
-async def forgot_password(data: ForgotPinRequest, session: Session = Depends(get_session)):
+async def forgot_password(
+    data: ForgotPinRequest,
+    session: Session = Depends(get_session),
+    redis: Redis = Depends(get_redis)
+):
     """
     Initiates the password recovery process by issuing a verification code.
     """
@@ -353,7 +361,6 @@ async def forgot_password(data: ForgotPinRequest, session: Session = Depends(get
 
     otp = generate_otp()
     
-    redis = get_redis()
     await redis.set(f"reset_password:{data.email}", otp, ex=600)
 
     email_body = f"<h3>Password Reset Request</h3><p>Your code is: <b>{otp}</b></p>"
@@ -362,7 +369,11 @@ async def forgot_password(data: ForgotPinRequest, session: Session = Depends(get
     return {"message": "OTP sent to email."}
 
 @router.post("/reset-password")
-async def reset_password(data: PasswordReset, session: Session = Depends(get_session)):
+async def reset_password(
+    data: PasswordReset,
+    session: Session = Depends(get_session),
+    redis: Redis = Depends(get_redis)
+):
     """
     Resets the user's login password after verifying the One-Time Password (OTP).
     """
@@ -372,8 +383,6 @@ async def reset_password(data: PasswordReset, session: Session = Depends(get_ses
         
         if not user:
             raise HTTPException(status_code=400, detail="User not found")
-        
-        redis = get_redis()
     
         user.password_hash = get_pin_hash(data.password)
         session.add(user)
@@ -383,7 +392,7 @@ async def reset_password(data: PasswordReset, session: Session = Depends(get_ses
         await redis.delete(f"reset_pin:{data.email}")
 
         return {"message": "Password successfully reset. {Demo mode}"}
-    redis = get_redis()
+   
     key = f"reset_pin:{data.email}"
     stored_otp = await redis.get(key)
 
