@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, Request, HTTPException
+from fastapi.concurrency import run_in_threadpool
 from authlib.integrations.starlette_client import OAuth
 from sqlmodel import Session, select
 
@@ -82,8 +83,8 @@ async def signup(
     existing_user = session.exec(statement).first()
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already belongs to an existing user")
-    
-    hashed_password = get_pin_hash(signup_data.password)
+
+    hashed_password = await run_in_threadpool(get_pin_hash, signup_data.password)
 
     new_user = User(
         email=signup_data.email,
@@ -389,7 +390,7 @@ async def reset_password(
         session.commit()
         session.refresh(user)
 
-        await redis.delete(f"reset_pin:{data.email}")
+        await redis.delete(f"reset_password:{data.email}")
 
         return {"message": "Password successfully reset. {Demo mode}"}
    
