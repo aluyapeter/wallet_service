@@ -105,15 +105,20 @@ async def paystack_webhook(
 
     data = event_data.get("data", {})
     reference = data.get("reference")
-    amount_paid = data.get("amount") 
-    statement = select(Transaction).where(Transaction.reference == reference)
-    transaction = session.exec(statement).first()
+    amount_paid = data.get("amount")
+    stmt = select(Transaction).where(Transaction.reference == reference).with_for_update()
+    transaction = session.exec(stmt).first()
 
     if not transaction:
         return {"status": "error", "message": "Transaction not found"}
 
     if transaction.status == TransactionStatus.SUCCESS:
-        return {"status": "ignored", "message": "Transaction already processed"}
+        return {
+            "status": "ignored",
+            "message": "Transaction already processed"
+        }
+    # if transaction.status == TransactionStatus.SUCCESS:
+    #     return {"status": "ignored", "message": "Transaction already processed"}
 
     try:
         wallet_stmt = (
@@ -191,8 +196,11 @@ def transfer_funds(
 
     reference = str(uuid.uuid4())
 
-    sender_wallet.balance -= request_data.amount
-    receiver_wallet.balance += request_data.amount
+    # sender_wallet.balance -= request_data.amount
+    # receiver_wallet.balance += request_data.amount
+
+    sender_wallet.balance = Wallet.balance - request_data.amount
+    receiver_wallet.balance = Wallet.balance + request_data.amount
 
     sender_txn = Transaction(
         amount=-request_data.amount,
@@ -232,7 +240,11 @@ def transfer_funds(
     session.add(receiver_entry)
     session.commit()
     
-    return {"status": "success", "message": "Transfer successful", "reference": reference}
+    return {
+        "status": "success",
+        "message": "Transfer successful",
+        "reference": reference
+    }
 
 @router.get("/balance")
 @limiter.limit("100/minute")
@@ -350,47 +362,17 @@ async def withdraw_funds(
         raise HTTPException(400, "PIN not set")
     if not verify_pin(request.pin, user.pin_hash):
         raise HTTPException(401, "Invalid PIN")
-
+    
+    if not user.wallet:
+        raise HTTPException(status_code=404, detail="Wallet not found")
     wallet = user.wallet
-    if not wallet:
-        raise HTTPException(status_code=400, detail="User does not have a linked wallet")
     if wallet.balance < request.amount:
         raise HTTPException(400, "Insufficient funds")
 
-    original_balance = wallet.balance
+    reference = f"wth-{uuid.uuid4()}"
+
     wallet.balance -= request.amount
     session.add(wallet)
-    session.commit()
-    session.refresh(wallet)
-
-    paystack = PaystackService()
-    
-    recipient_code = await paystack.create_transfer_recipient(
-        name=request.account_name,
-        account_number=request.account_number,
-        bank_code=request.bank_code
-    )
-    
-    if not recipient_code:
-        wallet.balance += request.amount
-        session.add(wallet)
-        session.commit()
-        raise HTTPException(500, "Failed to register bank account with provider")
-
-    reference = f"wth-{uuid.uuid4()}"
-    transfer_result = await paystack.initiate_transfer(
-        amount=request.amount,
-        recipient_code=recipient_code,
-        reference=reference,
-        reason="Wallet Withdrawal"
-    )
-
-    if not transfer_result["status"]:
-        wallet.balance += request.amount
-        session.add(wallet)
-        session.commit()
-        logger.error(f"Withdrawal failed for {user.email}: {transfer_result['message']}")
-        raise HTTPException(502, "Transfer failed at provider")
 
     txn = Transaction(
         amount=-request.amount,
@@ -401,6 +383,51 @@ async def withdraw_funds(
         meta_data={"bank": request.bank_code, "account": request.account_number}
     )
     session.add(txn)
-    session.commit()
+    session.commit() 
+    session.refresh(txn)
 
-    return {"status": "success", "message": "Withdrawal processing", "reference": reference}
+    paystack = PaystackService()
+    
+    try:
+        recipient_code = await paystack.create_transfer_recipient(
+         name=request.account_name,
+         account_number=request.account_number,
+         bank_code=request.bank_code
+    )
+        if not recipient_code:
+            raise Exception("Recipient creation failed")
+
+        transfer_result = await paystack.initiate_transfer(
+            amount=request.amount,
+            recipient_code=recipient_code,
+            reference=reference,
+            reason="Wallet Withdrawal"
+        )
+
+        if not transfer_result.get("status"):
+            raise Exception(transfer_result.get("message", "Transfer failed"))
+
+        txn.status = TransactionStatus.SUCCESS 
+        session.add(txn)
+        session.commit()
+
+    except Exception as e:
+        logger.error(f"Withdrawal failed: {e}")
+        
+        session.refresh(wallet)
+        session.refresh(txn)
+        
+        wallet.balance += request.amount
+        txn.status = TransactionStatus.FAILED
+        
+        session.add(wallet)
+        session.add(txn)
+        session.commit()
+        
+        raise HTTPException(500, "Withdrawal failed. Funds have been refunded.")
+
+    return {
+        "status": "success",
+        "message": "Withdrawal processing",
+        "reference": reference
+    }
