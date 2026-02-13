@@ -175,3 +175,21 @@ docker-compose exec web pytest
 2. Set up `.env` file with production secrets
 3. Run `docker-compose up -d --build`
 4. Run migrations `docker-compose exec web alembic upgrade head`
+
+## Performance Benchmarks
+
+Load tested with Locust under 50 concurrent users:
+
+| Endpoint | Median (ms) | 99th Percentile (ms) | RPS |
+|----------|-------------|----------------------|-----|
+| GET /wallet/balance | 27 | 190 | 9.6 |
+| POST /wallet/deposit | 39 | 240 | 2.0 |
+| GET /wallet/transactions | 33 | 230 | 1.7 |
+| POST /wallet/transfer | 230 | 1100 | 2.2 |
+| POST /auth/login | 490 | 840 | — |
+| **Aggregated** | **37** | **590** | **15.5** |
+
+> 9,735 total requests · 0% failure rate · 50 concurrent users
+
+<img width="1366" height="768" alt="Screenshot (425)" src="https://github.com/user-attachments/assets/c2ca26a2-dd8e-44e9-9b7c-e830ed15bf79" />
+
