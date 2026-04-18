@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from jose import jwt, JWTError
 import uuid
 from pwdlib import PasswordHash
+from pwdlib.hashers.argon2 import Argon2Hasher
 
 from fastapi import Depends, HTTPException, status, Security
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, APIKeyHeader
@@ -18,7 +19,10 @@ import string
 
 security_scheme = HTTPBearer(auto_error=False)
 api_key_header = APIKeyHeader(name="x-api-key", auto_error=False)
-password_hash = PasswordHash.recommended()
+# password_hash = PasswordHash.recommended()
+password_hash = PasswordHash((
+    Argon2Hasher(memory_cost=10240, time_cost=2),
+))
 
 @dataclass
 class UserAuthContext:
